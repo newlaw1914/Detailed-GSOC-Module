@@ -1,0 +1,1397 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GSOC-TRN-002 — Alert Monitoring, Verification & Escalation</title>
+<style>
+  :root{
+    --ink:#0B0C10;
+    --panel:#14161D;
+    --panel-2:#1B1E27;
+    --line:#262A35;
+    --frost:#E8EAEF;
+    --shark:#92989B;
+    --prism:#512FFF;
+    --prism-soft:rgba(81,47,255,.14);
+    --amber:#E0A93B;
+    --red:#D64545;
+    --green:#4FB286;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ink);color:var(--frost);font-family:var(--sans);
+    font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  a{color:#9C86FF}
+
+  /* ---------- console chrome ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:40;
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:10px 18px;background:rgba(11,12,16,.92);
+    border-bottom:1px solid var(--line);backdrop-filter:blur(8px);
+  }
+  .brandmark{
+    font-family:var(--sans);font-weight:800;letter-spacing:.22em;
+    text-transform:uppercase;font-size:12px;
+  }
+  .brandmark span{color:var(--prism)}
+  .docid{
+    font-family:var(--mono);font-size:11px;color:var(--shark);
+    letter-spacing:.06em;
+  }
+  .clock{
+    margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--frost);
+    display:flex;align-items:center;gap:8px;
+  }
+  .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(79,178,134,.6);animation:pulse 2.4s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(79,178,134,0)}100%{box-shadow:0 0 0 0 rgba(79,178,134,0)}}
+
+  .progwrap{height:2px;background:var(--line);position:sticky;top:41px;z-index:39}
+  .progbar{height:2px;width:0;background:var(--prism);transition:width .4s ease}
+
+  .shell{display:grid;grid-template-columns:246px 1fr;gap:0;min-height:100vh}
+  .rail{
+    border-right:1px solid var(--line);padding:22px 0 60px;
+    position:sticky;top:43px;height:calc(100vh - 43px);overflow:auto;
+  }
+  .railhead{
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--shark);padding:0 18px 10px;
+  }
+  .navitem{
+    display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;
+    background:none;border:0;border-left:2px solid transparent;
+    color:var(--shark);font-family:var(--sans);font-size:13px;
+    padding:8px 18px;cursor:pointer;line-height:1.35;
+  }
+  .navitem:hover{color:var(--frost);background:var(--panel)}
+  .navitem.on{color:var(--frost);border-left-color:var(--prism);background:var(--prism-soft)}
+  .navitem .n{font-family:var(--mono);font-size:10px;color:var(--prism);min-width:22px}
+  .navitem.done .n::after{content:" ✓";color:var(--green)}
+
+  main{padding:34px 30px 120px;max-width:860px}
+  .eyebrow{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--prism);margin:0 0 8px;
+  }
+  h1{
+    font-size:clamp(26px,4.4vw,40px);line-height:1.06;margin:0 0 14px;
+    text-transform:uppercase;letter-spacing:.005em;font-weight:800;
+  }
+  h2{
+    font-size:20px;margin:34px 0 12px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;
+  }
+  h3{font-size:14px;margin:22px 0 8px;letter-spacing:.13em;text-transform:uppercase;color:var(--shark);font-weight:700}
+  p{margin:0 0 12px}
+  ul,ol{margin:0 0 12px;padding-left:22px}
+  li{margin:0 0 6px}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  .sopref{
+    font-family:var(--mono);font-size:11px;color:var(--frost);
+    background:var(--panel-2);border:1px solid var(--line);
+    padding:2px 7px;border-radius:3px;white-space:nowrap;
+  }
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px 20px;margin:0 0 18px}
+  .card.tight{padding:14px 16px}
+  .example{border-left:2px solid var(--prism)}
+  .takeaway{background:linear-gradient(180deg,rgba(81,47,255,.10),rgba(81,47,255,.03));border-color:#33306B}
+  .takeaway h3{color:var(--prism)}
+
+  /* feed */
+  .feed{background:#090A0E;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:0 0 18px}
+  .feedhead{
+    display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--shark);
+  }
+  .feedrow{
+    display:grid;grid-template-columns:64px 1fr;gap:12px;padding:10px 14px;
+    border-bottom:1px solid #16181F;font-size:13.5px;
+    animation:slidein .32s ease both;
+  }
+  .feedrow:last-child{border-bottom:0}
+  .feedrow .t{font-family:var(--mono);font-size:12px;color:var(--amber)}
+  .feedrow.sys .t{color:var(--shark)}
+  .feedrow.crit{background:rgba(214,69,69,.07)}
+  .feedrow.crit .t{color:var(--red)}
+  @keyframes slidein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+  /* prompts + options */
+  .prompt{font-weight:700;margin:0 0 12px}
+  .opts{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
+  .opt{
+    display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+    color:var(--frost);font:inherit;padding:11px 13px;cursor:pointer;transition:.15s;
+  }
+  .opt:hover:not(:disabled){border-color:var(--prism);background:#20232E}
+  .opt .k{font-family:var(--mono);font-size:11px;color:var(--prism);padding-top:2px;min-width:14px}
+  .opt.sel{border-color:var(--prism);background:var(--prism-soft)}
+  .opt.right{border-color:var(--green);background:rgba(79,178,134,.10)}
+  .opt.wrong{border-color:var(--red);background:rgba(214,69,69,.09)}
+  .opt:disabled{cursor:default;opacity:.92}
+
+  textarea{
+    width:100%;min-height:130px;background:#090A0E;color:var(--frost);
+    border:1px solid var(--line);border-radius:5px;padding:12px;
+    font-family:var(--mono);font-size:13px;line-height:1.55;resize:vertical;
+  }
+  textarea:focus{outline:2px solid var(--prism);outline-offset:1px}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--prism);color:#fff;border:0;border-radius:4px;
+    font-family:var(--sans);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    padding:11px 18px;cursor:pointer;
+  }
+  .btn:hover{background:#6444FF}
+  .btn:disabled{background:#2A2D38;color:#666B78;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--frost)}
+  .btn.ghost:hover{border-color:var(--prism);background:var(--prism-soft)}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+  .reveal{display:none;margin-top:16px;padding-top:16px;border-top:1px dashed var(--line);animation:slidein .3s ease both}
+  .reveal.show{display:block}
+  .rlabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--shark);margin:16px 0 6px}
+  .rlabel:first-child{margin-top:0}
+  .risk{color:#F0B7B7}
+  .good{color:#A8DFC6}
+
+  .lvl{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;white-space:nowrap;border:1px solid}
+  .lvl1{color:var(--shark);border-color:#333}
+  .lvl2{color:#9C86FF;border-color:#3A3470}
+  .lvl3{color:var(--amber);border-color:#5A4620}
+  .lvl4{color:var(--amber);border-color:#5A4620}
+  .lvl5{color:var(--red);border-color:#5A2626}
+  .lvl6{color:var(--red);border-color:#5A2626}
+
+  .confirm{
+    font-family:var(--mono);font-size:11.5px;color:var(--amber);
+    background:rgba(224,169,59,.08);border:1px dashed #5A4620;
+    padding:1px 6px;border-radius:3px;
+  }
+
+  /* rank exercise */
+  .rank{list-style:none;padding:0;margin:0 0 14px;counter-reset:r}
+  .rank li{
+    display:flex;align-items:center;gap:12px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:5px;padding:10px 12px;margin:0 0 7px;
+  }
+  .rank li .pos{font-family:var(--mono);font-size:12px;color:var(--prism);min-width:18px}
+  .rank li .txt{flex:1;font-size:13.5px}
+  .arrows{display:flex;gap:4px}
+  .arrows button{
+    background:transparent;border:1px solid var(--line);color:var(--frost);
+    width:26px;height:26px;border-radius:3px;cursor:pointer;font-size:12px;line-height:1;
+  }
+  .arrows button:hover{border-color:var(--prism);color:var(--prism)}
+
+  table{width:100%;border-collapse:collapse;margin:0 0 14px;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--shark);font-weight:400}
+  tbody tr:nth-child(even){background:rgba(232,234,239,.025)}
+
+  /* checklist scoring */
+  .chk{display:flex;gap:10px;align-items:flex-start;margin:0 0 7px;font-size:13.5px}
+  .chk input{margin-top:5px;accent-color:var(--prism);width:15px;height:15px}
+
+  /* score */
+  .scorebig{font-family:var(--mono);font-size:52px;line-height:1;letter-spacing:-.02em;margin:6px 0 4px}
+  .band{font-weight:800;text-transform:uppercase;letter-spacing:.1em;font-size:13px}
+  .meter{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:5px 0 0}
+  .meter i{display:block;height:6px;background:var(--prism)}
+  .failflag{border:1px solid #5A2626;background:rgba(214,69,69,.10);border-radius:5px;padding:12px 14px;margin:0 0 10px}
+  .failflag b{color:#F0B7B7}
+
+  .log{position:fixed;right:0;bottom:0;z-index:50;width:320px;max-width:92vw;font-family:var(--mono);font-size:11.5px}
+  .logtoggle{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);border-bottom:0;
+    color:var(--frost);text-align:left;padding:9px 12px;cursor:pointer;
+    letter-spacing:.12em;text-transform:uppercase;font-size:10px;font-family:var(--mono);
+  }
+  .logbody{display:none;max-height:38vh;overflow:auto;background:#090A0E;border:1px solid var(--line);padding:10px 12px}
+  .logbody.show{display:block}
+  .logbody div{color:var(--shark);margin:0 0 5px}
+  .logbody div b{color:var(--frost);font-weight:400}
+
+  .hidden{display:none}
+  .muted{color:var(--shark)}
+  .small{font-size:12.5px}
+
+  @media (max-width:820px){
+    .shell{grid-template-columns:1fr}
+    .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:14px 0}
+    main{padding:24px 16px 140px}
+    .log{width:100%}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+
+<div class="topbar">
+  <div class="brandmark">Special<span>ized</span></div>
+  <div class="docid">GSOC-TRN-002 · SOP-GSOC-001 · PLANO JSOC</div>
+  <div class="clock"><span class="pulse"></span><span id="clock">--:--:--</span></div>
+</div>
+<div class="progwrap"><div class="progbar" id="progbar"></div></div>
+
+<div class="shell">
+  <nav class="rail" id="rail"><div class="railhead">Module contents</div></nav>
+  <main id="main"></main>
+</div>
+
+<div class="log">
+  <button class="logtoggle" id="logtoggle">▲ Decision log <span id="logcount" class="muted">(0)</span></button>
+  <div class="logbody" id="logbody"><div class="muted">No entries. Every decision you make is timestamped here — the same discipline the incident record requires.</div></div>
+</div>
+
+<script>
+/* ============================ state ============================ */
+const S = {
+  page:0,
+  done:new Set(),
+  log:[],
+  points:{},          // id -> {earned, max, comp}
+  flags:[],           // automatic-fail conditions triggered
+  confirms:new Set()
+};
+
+const COMPS = ["Alert response & triage","LVT console & visual verification","Incident assessment","Escalation-level selection","Communication","Documentation","Situational awareness under load","Decision-making with incomplete information"];
+
+function now(){
+  const d=new Date();
+  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+}
+function tick(){
+  const d=new Date();
+  document.getElementById('clock').textContent =
+    [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')+' LOCAL';
+}
+setInterval(tick,1000); tick();
+
+function logIt(what){
+  S.log.push({t:now(),what});
+  const b=document.getElementById('logbody');
+  if(S.log.length===1) b.innerHTML='';
+  const row=document.createElement('div');
+  row.innerHTML='<b>'+S.log[S.log.length-1].t+'</b> — '+what;
+  b.appendChild(row); b.scrollTop=b.scrollHeight;
+  document.getElementById('logcount').textContent='('+S.log.length+')';
+}
+document.getElementById('logtoggle').onclick=e=>{
+  const b=document.getElementById('logbody');
+  b.classList.toggle('show');
+  e.currentTarget.firstChild.nodeValue = b.classList.contains('show')?'▼ Decision log ':'▲ Decision log ';
+};
+
+function score(id,earned,max,comp){
+  S.points[id]={earned,max,comp};
+}
+function flag(txt){ if(!S.flags.includes(txt)) S.flags.push(txt); }
+function markConfirm(txt){ S.confirms.add(txt); }
+
+/* ============================ content ============================ */
+
+const LVL = n => `<span class="lvl lvl${n}">LEVEL ${n}</span>`;
+const SOP = t => `<span class="sopref">${t}</span>`;
+const CF  = t => { markConfirm(t); return `<span class="confirm">[CONFIRM: ${t}]</span>`; };
+
+const SECTIONS = [
+/* ---------------- 0. BRIEF ---------------- */
+{
+  nav:"Pre-shift brief",
+  render(){return `
+  <p class="eyebrow">GSOC-TRN-002 · Module 1 of the console series</p>
+  <h1>Alert monitoring,<br>verification &amp; escalation</h1>
+  <p class="small muted">Governing procedure ${SOP('SOP-GSOC-001')} · Governance layer ${SOP('SOP-GSOC-000 Part A')} · Certification path ${SOP('SOP-GSOC-002')} · Companion to ${SOP('GSOC-TRN-001')}</p>
+
+  <div class="card">
+    <h3>Read this first</h3>
+    <p>You are pre-certification. You have not passed ${SOP('SOP-GSOC-002')} console certification, which means you may not work a live console unsupervised. This module is where you make your mistakes.</p>
+    <p>Nothing here is graded on speed. It is graded on <b>sequence and judgment</b> — whether you did the right things in the right order and escalated to the right level.</p>
+    <p style="margin-bottom:0">Where a program value is not yet ratified, you will see it marked like this: ${CF('SOW acknowledgement target')}. You are never scored on a value marked that way. Learn to notice them — an operator who spots an unratified assumption is doing the job.</p>
+  </div>
+
+  <h2>By the end of this module</h2>
+  <p class="small muted">You will be able to:</p>
+  <ol>
+    <li>Acknowledge and triage an LVT tower alert to the standard in ${SOP('SOP-GSOC-001 §6.1')}, distinguishing a false alert from an actionable event.</li>
+    <li>Perform visual verification and state your finding as fact rather than assumption ${SOP('§6.2')}.</li>
+    <li>Select the correct escalation level from the six-level model and justify it ${SOP('§7')}.</li>
+    <li>Execute a direct-to-guard dispatch containing all five required content elements ${SOP('§6.3')}.</li>
+    <li>Escalate a life-safety threat to law enforcement without waiting on Supervisor availability ${SOP('§6.4')}.</li>
+    <li>Write an incident record to the legal-grade standard — factual, timestamped, objective, defensible ${SOP('§6.5')}.</li>
+    <li>Prioritise concurrent events by life safety first, and recognise when to hand off rather than queue.</li>
+    <li>Recognise a degraded-mode condition, declare it, and log the coverage gap rather than assume recovery.</li>
+  </ol>
+
+  <h2>The three anchors</h2>
+  <div class="card takeaway">
+    <h3>Hold these permanently</h3>
+    <ol style="margin-bottom:0">
+      <li><b>Escalate when in doubt.</b> The cost of an unnecessary escalation is always lower than the cost of a missed one. No operator is disciplined for escalating in good faith.</li>
+      <li><b>Verify facts, not assumptions.</b> Visual verification comes before dispatch and before escalation, unless a documented SOW exception applies.</li>
+      <li><b>Degraded mode is a procedure.</b> An outage gets declared, compensated and gap-logged. The platform does not tell you when it is healthy again.</li>
+    </ol>
+  </div>
+
+  <h2>The decision cycle</h2>
+  <div class="feed">
+    <div class="feedhead">Specialized decision cycle · every event, every time</div>
+    ${[["EVENT","An alert arrives at the console, or a call comes in.","§6.1"],
+       ["VERIFY","Eyes on the live feed. Establish what is actually happening.","§6.2"],
+       ["ASSESS","False alert, or actionable event? Life safety involved?","§6.2"],
+       ["RESPOND","Talk-down, dispatch, or monitor.","§6.3"],
+       ["ESCALATE","Select the level. Life safety escalates in parallel, not in sequence.","§6.4 / §7"],
+       ["DOCUMENT","Incident record, timestamps, every notification.","§6.5"],
+       ["MONITOR","Stay with it until the outcome is known.","§6.5"],
+       ["CLOSE","Supervisor reviews for completeness before closure.","§6.5"]]
+      .map(([a,b,c])=>`<div class="feedrow sys"><div class="t">${a==='EVENT'?'▸':'·'}</div><div><b>${a}</b> — ${b} <span class="mono muted">${c}</span></div></div>`).join('')}
+  </div>
+  <p class="small muted">You will be dropped into the middle of this cycle repeatedly and asked where you are. The question is never rhetorical: the answer determines what you are allowed to do next.</p>
+  `;}
+},
+
+/* ---------------- 1. SECTION 1 ---------------- */
+{
+  nav:"1 · The first 60 seconds",
+  render(){return `
+  <p class="eyebrow">Section 1 · Level 1 — basic recognition</p>
+  <h1>The first 60 seconds</h1>
+  <p class="small muted">Governing procedure ${SOP('SOP-GSOC-001 §6.1')} — acknowledgement and triage</p>
+
+  <h2>Lesson</h2>
+  <p>An <b>alert</b> is an event raised at your console by an LVT tower — automated analytics, or a manual raise. It is not yet an incident. It is not yet real. It is a claim that something happened, and your first job is to take ownership of that claim.</p>
+  <p><b>Acknowledge</b> means you have taken the alert. It stops the alert queueing and it starts your clock. <b>Triage</b> is your first assessment: does this need visual verification, and how fast?</p>
+  <p>Acknowledgement is not resolution. This is the single most common new-operator error. An acknowledged alert that was never verified looks identical in the queue to one that was fully worked — and it is the failure that shows up in a QA audit and, occasionally, in a deposition.</p>
+  <p>Your acknowledgement time is a KPI committed in the statement of work. The exact target is ${CF('SOW-committed acknowledgement time')}. Until that number is ratified, work to the standing floor instruction: acknowledge on arrival, do not batch.</p>
+
+  <h2>Operator example</h2>
+  <div class="card example">
+    <p class="mono muted small" style="margin-bottom:8px">0213 · DC-4417 · Rear shipping entrance</p>
+    <p style="margin-bottom:0">Three alerts land inside ninety seconds from the same tower — motion, motion, motion — all in the same zone. A new operator sees three rows and assumes a wind-driven analytics loop, because that is what it looked like on Tuesday. She clears all three. The zone is a loading apron. What was actually there was a person walking the fence line, tripping the same analytic three times.</p>
+  </div>
+  <p class="small">Nothing about three identical alerts tells you they are false. Repetition is a pattern, and a pattern is a reason to look harder, not a reason to look away.</p>
+
+  <h2>What would you do?</h2>
+  <div class="card" id="s1card">
+    <div class="feed" style="margin-bottom:16px">
+      <div class="feedhead">Live alert queue</div>
+      <div class="feedrow"><div class="t">0213</div><div>Motion — <b>DC-4417</b> · Rear shipping entrance · analytics: person</div></div>
+      <div class="feedrow"><div class="t">0213</div><div>Motion — <b>DC-4417</b> · Rear shipping entrance · analytics: person</div></div>
+      <div class="feedrow"><div class="t">0214</div><div>Motion — <b>DC-4417</b> · Rear shipping entrance · analytics: person</div></div>
+      <div class="feedrow sys"><div class="t">note</div><div>This site produced 11 environmental false alerts on the previous shift.</div></div>
+    </div>
+    <p class="prompt">What is your first action?</p>
+    <div class="opts" id="s1opts"></div>
+    <div class="reveal" id="s1rev"></div>
+  </div>
+
+  <h2>Knowledge check</h2>
+  <div id="s1checks"></div>
+
+  <div class="card takeaway">
+    <h3>Operator takeaway</h3>
+    <ol style="margin-bottom:0">
+      <li>Acknowledge on arrival. Never batch, never clear a queue to make it look tidy.</li>
+      <li>Acknowledgement is not verification and it is not resolution.</li>
+      <li>False-alert history is context. It is never a verification method.</li>
+    </ol>
+  </div>
+  `;},
+  init(){
+    mcq({
+      mount:'s1opts', reveal:'s1rev', id:'s1', comp:"Alert response & triage",
+      options:[
+        "Clear all three as environmental — the site has a documented false-alert history from last shift.",
+        "Acknowledge the alerts and pull the live feed for the rear shipping entrance zone.",
+        "Notify the Program Supervisor before touching the alerts.",
+        "Dispatch the on-site officer to the rear shipping entrance immediately."
+      ],
+      correct:1,
+      evalText:{
+        1:`<div class="rlabel">Correct</div><p class="good">You acknowledged, then went straight to the live feed. That is ${SOP('§6.1')} into ${SOP('§6.2')} with nothing skipped.</p>`,
+        0:`<div class="rlabel">What you missed</div><p class="risk">You resolved three alerts without looking at anything. The analytics classified a <b>person</b> — that is not an environmental signature. False-alert history from a prior shift is context for how hard you look, not permission to skip looking.</p><div class="rlabel">Operational consequence</div><p class="risk">A subject on the fence line of a distribution centre gets an uncontested six to eight minutes. Nothing in the record shows anyone ever looked, so nobody catches it until the morning yard walk.</p>`,
+        2:`<div class="rlabel">Partially right instinct</div><p>Escalating when in doubt is never punished, and that instinct is correct. But you have nothing to tell the Supervisor yet — no verification, no subject description, no zone status. ${LVL(2)} with an empty picture wastes the one person who can help you.</p>`,
+        3:`<div class="rlabel">What you missed</div><p class="risk">You dispatched on an assumption. You do not yet know whether there is one subject or four, whether they are inside the fence, or whether they are armed — so you have sent an officer toward an unknown with none of the five required dispatch elements.</p><div class="rlabel">Operational consequence</div><p class="risk">The officer walks into a situation you had the ability to describe and chose not to. That is the exposure ${SOP('§6.3')} exists to prevent.</p>`
+      },
+      after:`<div class="rlabel">Recommended action</div>
+        <p>Acknowledge all three, pull the live feed for the zone, and hold dispatch until you have a verified picture. ${SOP('SOP-GSOC-001 §6.1 → §6.2')} · ${LVL(1)} pending verification.</p>
+        <div class="rlabel">Where you are in the cycle</div>
+        <p class="mono small">EVENT ✓ → <b>VERIFY</b> ← you are here → ASSESS → RESPOND → ESCALATE → DOCUMENT → MONITOR → CLOSE</p>`
+    });
+
+    checks('s1checks','s1c',[
+      {type:'mcq',comp:"Alert response & triage",
+       q:"An alert has been acknowledged but no verification was performed and the alert was closed. In a QA audit, how does this present?",
+       options:["As a resolved alert — acknowledgement satisfies the requirement.","As an unverified closure — a non-compliance against §6.1/§6.2.","As a false alert, correctly dispositioned.","It does not present; only escalated events are audited."],
+       a:[1],
+       ex:"Acknowledgement and closure without verification is a non-compliance, and it is indistinguishable in the queue from a properly worked alert. That is precisely why it is dangerous."},
+      {type:'tf',comp:"Alert response & triage",
+       q:"A documented false-alert history at a site permits an operator to close subsequent alerts at that site without visual verification.",
+       a:[1], options:["True","False"],
+       ex:"False. History changes your expectation, never your procedure. Any SOW-defined exception permitting action without verification is itself an unratified item — "+CF('SOW exception permitting action without visual verification')+"."},
+      {type:'multi',comp:"Alert response & triage",
+       q:"Select everything that is true of triage.",
+       options:["It decides whether the alert needs visual verification.","It resolves the alert.","It starts the operator's KPI clock for the event.","It is the operator's first assessment, not a conclusion.","It can be delegated to the on-site officer."],
+       a:[0,2,3],
+       ex:"Triage assesses and prioritises; it does not resolve, and it is never delegated to a responder who cannot see the console."}
+    ]);
+  }
+},
+
+/* ---------------- 2. SECTION 2 ---------------- */
+{
+  nav:"2 · Visual verification",
+  render(){return `
+  <p class="eyebrow">Section 2 · Level 2 — procedure application</p>
+  <h1>Facts, not assumptions</h1>
+  <p class="small muted">Governing procedure ${SOP('SOP-GSOC-001 §6.2')} · verification standards ${SOP('SOP-GSOC-003')}</p>
+
+  <h2>Lesson</h2>
+  <p><b>Visual verification</b> is using the live LVT feed to confirm whether an alert is a real, actionable event. It is the hinge of the whole procedure. Everything downstream — dispatch, escalation, the report, the client's confidence in the service — rests on whether you actually looked and what you actually saw.</p>
+  <p>The discipline is narrower than it sounds. You are establishing observable fact:</p>
+  <ul>
+    <li><b>Subjects</b> — how many, where exactly, what they are doing, what they are carrying, direction of travel.</li>
+    <li><b>Vehicles</b> — number, type, colour, position, whether occupied, whether plates are readable.</li>
+    <li><b>Environment</b> — lighting, weather, whether a gate or door is open, whether the perimeter is breached.</li>
+    <li><b>Severity</b> — is there a risk to human life in what you can see?</li>
+  </ul>
+  <p>What you are not doing is inferring intent. "Two subjects near the trailer, one carrying a bag" is verification. "Two subjects casing the trailers" is an assumption that will be read back to you in a legal proceeding.</p>
+  <p>Use every available view before you conclude. A single camera showing an empty frame is not the same as a zone being clear — the subject may simply be in the part of the apron that camera does not cover.</p>
+
+  <h2>Operator example</h2>
+  <div class="card example">
+    <p class="mono muted small" style="margin-bottom:8px">0322 · RT-2081 · Garden centre enclosure</p>
+    <p style="margin-bottom:0">Operator verifies and logs: <i>"Subject looks like he's trying to break in."</i> Two months later the incident is part of a claim. The defence asks what the operator observed that established an attempt to break in. There is nothing in the record but that sentence. What the operator had actually seen — one subject, pulling repeatedly on a chained gate, gloved, bag at his feet — was strong, specific and defensible, and none of it was written down.</p>
+  </div>
+
+  <h2>What would you do?</h2>
+  <div class="card">
+    <div class="feed" style="margin-bottom:16px">
+      <div class="feedhead">Verification in progress · RT-2081</div>
+      <div class="feedrow"><div class="t">0322</div><div>Camera 2 (garden centre): one subject at the chained gate, pulling on the chain repeatedly. Gloved. Dark bag on the ground at his feet.</div></div>
+      <div class="feedrow"><div class="t">0323</div><div>Camera 4 (front lot): one vehicle, silver sedan, parked across two spaces, engine off, plate not readable at this angle.</div></div>
+      <div class="feedrow sys"><div class="t">note</div><div>Store closed. No scheduled overnight activity on the site calendar.</div></div>
+    </div>
+    <p class="prompt">Which of these belongs in the incident record as verified fact?</p>
+    <div class="opts" id="s2opts"></div>
+    <div class="reveal" id="s2rev"></div>
+  </div>
+
+  <h2>Knowledge check</h2>
+  <div id="s2checks"></div>
+
+  <div class="card takeaway">
+    <h3>Operator takeaway</h3>
+    <ol style="margin-bottom:0">
+      <li>Record what you can see. Never record what you think it means.</li>
+      <li>Check every available view before you call a zone clear.</li>
+      <li>Specific observation is stronger evidence than any conclusion you could draw from it.</li>
+    </ol>
+  </div>
+  `;},
+  init(){
+    mcq({
+      mount:'s2opts', reveal:'s2rev', id:'s2', comp:"LVT console & visual verification",
+      options:[
+        "Subject attempting to force entry to the garden centre; lookout vehicle in the front lot.",
+        "One subject at the garden centre gate pulling repeatedly on the chain, gloved, bag on the ground. One silver sedan in the front lot, engine off, plate not readable from this angle. Store closed, no scheduled activity.",
+        "Possible burglary in progress with at least two suspects involved.",
+        "Suspicious activity observed at the site; recommend dispatch."
+      ],
+      correct:1,
+      evalText:{
+        1:`<div class="rlabel">Correct</div><p class="good">Every element is observable and attributable to a camera and a time. It is stronger than any of the conclusions, and it survives cross-examination.</p>`,
+        0:`<div class="rlabel">What you missed</div><p class="risk">"Attempting to force entry" and "lookout vehicle" are both inferences. You did not see an attempt to force entry — you saw a man pulling on a chain. You have no observation linking the sedan to the subject at all.</p><div class="rlabel">Operational consequence</div><p class="risk">You have put an unsupported allegation about a specific vehicle into a legal record. If that plate is later traced to an uninvolved shopper, the record is now a liability rather than an asset.</p>`,
+        2:`<div class="rlabel">What you missed</div><p class="risk">"Possible burglary" is a classification, not an observation, and "at least two suspects" invents a second subject you never saw. You observed one subject and one unoccupied vehicle.</p>`,
+        3:`<div class="rlabel">What you missed</div><p class="risk">This is the weakest possible entry. "Suspicious activity" tells a responder nothing — not how many subjects, not where, not what they are doing. You discarded genuinely good detail in favour of a phrase.</p>`
+      },
+      after:`<div class="rlabel">Recommended action</div>
+        <p>Log the specific observations with camera and timestamp. Your <i>assessment</i> — actionable event, likely attempted entry — goes in the assessment field, clearly separated from what you observed. ${SOP('SOP-GSOC-001 §6.2')} → ${SOP('§6.3')}, ${LVL(3)} direct-to-guard dispatch.</p>`
+    });
+
+    checks('s2checks','s2c',[
+      {type:'mcq',comp:"LVT console & visual verification",
+       q:"Camera 2 shows an empty frame for the zone that alerted. What have you established?",
+       options:["The zone is clear.","That camera 2's field of view is currently unoccupied.","The alert was a false alert.","The analytics are misconfigured."],
+       a:[1],
+       ex:"One camera establishes only what that camera covers. Calling a zone clear on a single view is how subjects get lost between fields of view."},
+      {type:'multi',comp:"Documentation",
+       q:"Select every entry that fails the legal-grade standard.",
+       options:["\"Two subjects, both wearing dark clothing, at the north dock at 0241.\"","\"Subject appeared nervous and was clearly planning something.\"","\"Vehicle departed westbound on the access road at 0244.\"","\"Probably the same guy from last week.\"","\"Gate on the east fence line standing open at 0238.\""],
+       a:[1,3],
+       ex:"Nervousness and intent are interpretations. \"Probably the same guy\" is speculation attaching a prior event to an unidentified person — the least defensible sentence an operator can write."},
+      {type:'tf',comp:"LVT console & visual verification",
+       q:"Where a site has talk-down available, the operator may use it during verification to prompt a reaction from the subject.",
+       a:[0], options:["True","False"],
+       ex:"True in principle — talk-down is a deterrent and a direction tool under §6.3. But availability is per-site and not yet ratified across the programme: "+CF('per-site talk-down availability')+". Confirm before you rely on it."}
+    ]);
+  }
+},
+
+/* ---------------- 3. SECTION 3 ---------------- */
+{
+  nav:"3 · Escalation levels 1–6",
+  render(){return `
+  <p class="eyebrow">Section 3 · Level 3 — incident assessment</p>
+  <h1>Six levels, one parallel rule</h1>
+  <p class="small muted">Governing procedure ${SOP('SOP-GSOC-001 §6.4 and §7')} · contact matrix ${SOP('SOP-GSOC-003')}</p>
+
+  <h2>Lesson</h2>
+  <p>Specialized runs a six-level escalation model. There is no priority-one-two-three, there are no colour codes. Every escalation decision you make resolves to one of these six, and you name the level when you make it.</p>
+  <table>
+    <thead><tr><th>Level</th><th>Action</th><th>What it means at the console</th></tr></thead>
+    <tbody>
+      <tr><td>${LVL(1)}</td><td>Monitor and document</td><td>You keep it. Nothing leaves the room.</td></tr>
+      <tr><td>${LVL(2)}</td><td>Supervisor notification</td><td>Program Supervisor takes awareness or ownership.</td></tr>
+      <tr><td>${LVL(3)}</td><td>Direct-to-guard dispatch</td><td>On-site officer physically responds.</td></tr>
+      <tr><td>${LVL(4)}</td><td>Client / management notification</td><td>Client escalation contact from the matrix.</td></tr>
+      <tr><td>${LVL(5)}</td><td>Law enforcement / emergency response</td><td>911 or the jurisdiction reference for that site.</td></tr>
+      <tr><td>${LVL(6)}</td><td>Executive notification</td><td>Senior escalation — Kyle Walsh owns this path.</td></tr>
+    </tbody>
+  </table>
+  <p>Levels are not a staircase you must climb one step at a time. They are categories of action, and more than one can be live at once.</p>
+
+  <h2>The parallel rule</h2>
+  <div class="card takeaway">
+    <p style="margin-bottom:0">For a <b>life-safety threat</b> — risk to human life or serious bodily harm — you escalate to ${LVL(5)} <b>without waiting</b> for Supervisor availability. ${LVL(2)} runs in parallel. You do not hold an emergency call while you try a second time to reach your Supervisor.</p>
+  </div>
+  <p>This is the most commonly failed judgment in scenario work, and the failure is almost always well-intentioned: the operator is trying to follow the chain of command. The chain of command does not outrank a life. ${SOP('§6.4')} is explicit — escalate and notify in parallel.</p>
+  <p>Per-site jurisdiction references are captured during client onboarding under ${SOP('SOP-GSOC-003')}; the programme-wide reference set is ${CF('per-site law-enforcement jurisdiction references')}.</p>
+
+  <h2>Operator example</h2>
+  <div class="card example">
+    <p class="mono muted small" style="margin-bottom:8px">0407 · RT-1140 · Front entrance</p>
+    <p style="margin-bottom:0">Verified: two subjects, one on the ground and not moving, one standing over him. Operator's first action is to call the Supervisor. No answer. He calls again. Ninety seconds of a life-safety event are spent on an internal phone tree before anyone dials 911. Every one of those seconds is in the record with a timestamp against it.</p>
+  </div>
+
+  <h2>What would you do?</h2>
+  <div class="card">
+    <div class="feed" style="margin-bottom:16px">
+      <div class="feedhead">Verified event · RT-1140</div>
+      <div class="feedrow crit"><div class="t">0407</div><div>Two subjects, front entrance. One on the ground, not moving. Second subject standing over him.</div></div>
+      <div class="feedrow sys"><div class="t">0407</div><div>Program Supervisor: no answer on first attempt.</div></div>
+    </div>
+    <p class="prompt">Your next action.</p>
+    <div class="opts" id="s3opts"></div>
+    <div class="reveal" id="s3rev"></div>
+  </div>
+
+  <h2>Knowledge check</h2>
+  <div id="s3checks"></div>
+
+  <div class="card takeaway">
+    <h3>Operator takeaway</h3>
+    <ol style="margin-bottom:0">
+      <li>Name the level out loud when you escalate. "Level 5, notifying Level 2 in parallel."</li>
+      <li>Life safety never waits on the chain of command.</li>
+      <li>Levels are categories, not stairs. Run them concurrently when the event demands it.</li>
+    </ol>
+  </div>
+  `;},
+  init(){
+    mcq({
+      mount:'s3opts', reveal:'s3rev', id:'s3', comp:"Escalation-level selection",
+      options:[
+        "Try the Supervisor a second time, then escalate once you have authorisation.",
+        "Escalate to law enforcement now (Level 5) and notify the Supervisor in parallel (Level 2).",
+        "Dispatch the on-site officer (Level 3) and hold the law-enforcement call until the officer reports back.",
+        "Notify the client escalation contact (Level 4) — the site is theirs and they will call it in."
+      ],
+      correct:1,
+      evalText:{
+        1:`<div class="rlabel">Correct</div><p class="good">Level 5 immediately, Level 2 in parallel. That is exactly ${SOP('§6.4')}, and it is the answer regardless of who is or is not picking up their phone.</p>`,
+        0:`<div class="rlabel">Automatic fail condition</div><p class="risk">You held a life-safety escalation pending Supervisor availability. In this module that is a recorded automatic-fail condition, and on a live console it is the failure with the highest consequence available to you.</p><div class="rlabel">Operational consequence</div><p class="risk">A subject who is unresponsive on the ground has a survival curve measured in minutes. You spent them on a phone tree. Every second is timestamped in the record.</p>`,
+        2:`<div class="rlabel">What you missed</div><p class="risk">Dispatch is the right instinct and a Level 3 here is appropriate — but not <i>instead</i> of Level 5. You have sent an unarmed officer toward a possible assault and delayed the ambulance for the person on the ground.</p>`,
+        3:`<div class="rlabel">What you missed</div><p class="risk">You routed a life-safety emergency through a third party. Level 4 exists to keep the client informed, not to place emergency calls on your behalf. You have added a handoff to a timeline that cannot afford one.</p>`
+      },
+      after:`<div class="rlabel">Recommended action</div>
+        <p>${LVL(5)} without delay. ${LVL(2)} in parallel. ${LVL(3)} dispatch as a supporting action, with a safety caveat to the officer that a second subject is present. Support responders with live LVT information as they arrive. Record every contact and every time. ${SOP('SOP-GSOC-001 §6.4')}</p>`,
+      onWrong:(i)=>{ if(i===0) flag("Held a life-safety escalation pending Supervisor availability (Section 3)"); }
+    });
+
+    checks('s3checks','s3c',[
+      {type:'mcq',comp:"Escalation-level selection",
+       q:"Verified: one subject inside a fenced contractor lot at 0250, no weapon visible, no person at risk. Correct level?",
+       options:["Level 1 — monitor and document","Level 3 — direct-to-guard dispatch","Level 5 — law enforcement","Level 6 — executive notification"],
+       a:[1],
+       ex:"A verified, actionable, non-life-safety event is a direct-to-guard dispatch under §6.3, with the Supervisor notified. Level 5 is not warranted; Level 1 abandons a verified trespass."},
+      {type:'multi',comp:"Escalation-level selection",
+       q:"Which of these escalate to Level 5 immediately, with Level 2 in parallel? Select all.",
+       options:["Verified assault in progress at a monitored site.","Tower offline at a retail site with no other events.","Verified subject unresponsive on the ground.","Panic/duress activation at a distribution centre.","Repeat environmental alerts from a single analytic."],
+       a:[0,2,3],
+       ex:"Assault, an unresponsive person and a duress activation are all life-safety. A tower outage is a degraded-mode and Level 2 matter. Repeat environmental alerts are a verification and maintenance matter."},
+      {type:'short',comp:"Escalation-level selection",
+       q:"In one sentence: why does Level 2 run in parallel with Level 5 rather than before it?",
+       model:"Because a life-safety threat cannot absorb the delay of waiting for Supervisor availability — the emergency call and the internal notification are independent actions, so both are made at once and both are timestamped.",
+       ex:"Look for the delay argument and the independence of the two actions. If your answer made Level 2 a precondition, re-read §6.4."}
+    ]);
+  }
+},
+
+/* ---------------- 4. BRANCHING SC-13 ---------------- */
+{
+  nav:"4 · SC-13 branching",
+  render(){return `
+  <p class="eyebrow">Simulation SC-13 · Level 4 — competing priorities</p>
+  <h1>Branching scenario</h1>
+  <p class="small muted">Continues the ${SOP('GSOC-TRN-001')} scenario library at SC-13. Information is released as you act. Your choices change what happens next.</p>
+
+  <div class="card">
+    <div class="feed" id="sc13feed">
+      <div class="feedhead">SC-13 · incident begins</div>
+    </div>
+    <div id="sc13body"></div>
+  </div>
+  `;},
+  init(){
+    const feed=document.getElementById('sc13feed'), body=document.getElementById('sc13body');
+    let path=[], recovered=false;
+
+    function push(t,txt,cls=''){
+      const r=document.createElement('div');
+      r.className='feedrow '+cls;
+      r.innerHTML=`<div class="t">${t}</div><div>${txt}</div>`;
+      feed.appendChild(r);
+    }
+    function beat(cfg){
+      body.innerHTML=`<p class="prompt">${cfg.q}</p><div class="opts" id="scopts"></div><div class="reveal" id="screv"></div>`;
+      const wrap=document.getElementById('scopts'), rev=document.getElementById('screv');
+      cfg.options.forEach((o,i)=>{
+        const b=document.createElement('button');
+        b.className='opt';
+        b.innerHTML=`<span class="k">${String.fromCharCode(65+i)}</span><span>${o.label}</span>`;
+        b.onclick=()=>{
+          [...wrap.children].forEach(c=>{c.disabled=true;});
+          b.classList.add(o.good?'right':'wrong');
+          rev.innerHTML=o.result;
+          rev.classList.add('show');
+          path.push(o.label);
+          logIt('SC-13 · '+o.label);
+          if(o.flag) flag(o.flag);
+          const nx=document.createElement('div');
+          nx.className='btnrow';
+          const btn=document.createElement('button');
+          btn.className='btn'; btn.textContent=o.next?'Continue':'Debrief';
+          btn.onclick=()=>{ if(o.push) o.push.forEach(p=>push(p[0],p[1],p[2]||'')); o.next?o.next():debrief(); };
+          nx.appendChild(btn); rev.appendChild(nx);
+        };
+        wrap.appendChild(b);
+      });
+    }
+
+    /* --- beat 1 --- */
+    push('0148','Intrusion alert — <b>DC-4417</b> · Rear shipping entrance · analytics: person');
+    push('0148','Camera 3 covering the zone shows movement.','');
+    push('note','On-site officer is on a scheduled interior patrol. Program Supervisor is on the floor.','sys');
+
+    function b1(){
+      beat({q:"What is your first action?",
+      options:[
+        {label:"Acknowledge and pull the live feed for the rear shipping entrance.",good:true,
+         result:`<div class="rlabel">Sound</div><p class="good">Verification before anything else. You have not spent a resource and you have not made a claim you cannot support.</p>`,
+         push:[['0149','Camera 3: two subjects at the rear roll-door. One with a pry bar at the door edge. Second facing the yard, scanning.'],['0149','No vehicle visible in frame.']],
+         next:b2},
+        {label:"Dispatch the on-site officer to the rear shipping entrance now.",good:false,
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">You pulled the officer off patrol toward an unverified alert with none of the five required dispatch elements. He arrives alone at a roll-door where — you will learn thirty seconds from now — two subjects are working, one holding a pry bar. He had no idea a weapon-capable tool was present because you did not know either.</p><p>${SOP('§6.3')} requires site, precise location, nature, number of subjects and safety considerations. You could supply one of the five.</p>`,
+         push:[['0149','Officer en route, unbriefed.','crit'],['0149','Camera 3: two subjects at the rear roll-door. One with a pry bar. Second scanning the yard.','crit']],
+         next:b2},
+        {label:"Deprioritise — this site produced eleven false alerts last shift.",good:false,
+         flag:"Deprioritised a verified-capable alert on false-alert history (SC-13)",
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">Nine minutes pass before the next alert forces your hand. In those nine minutes the roll-door is defeated and both subjects are inside the building. The false-alert history was real — but false-alert history is not a verification method, and the record will show that no one looked.</p>`,
+         push:[['0157','Interior motion — DC-4417 · Aisle 12. Perimeter breach confirmed.','crit'],['0157','Camera 3: roll-door standing open. No subjects in frame.','crit']],
+         next:b2r}
+      ]});
+    }
+
+    /* --- beat 2 (verified path) --- */
+    function b2(){
+      beat({q:"Verified: two subjects at the roll-door, one with a pry bar, second acting as lookout. No person is currently at risk of harm. Your escalation call.",
+      options:[
+        {label:"Level 3 direct-to-guard dispatch with a full brief, Level 2 Supervisor notification.",good:true,
+         result:`<div class="rlabel">Correct</div><p class="good">Verified, actionable, not life-safety. ${LVL(3)} with ${LVL(2)} awareness is exactly ${SOP('§6.3')}. Your brief carries all five elements including the pry bar as a safety consideration for the responder.</p>`,
+         push:[['0150','Dispatch: DC-4417, rear roll-door, attempted forced entry, two subjects, one with pry bar — do not approach alone.'],['0150','Supervisor notified. Level 2 logged.']],
+         next:b3},
+        {label:"Level 5 law enforcement immediately.",good:false,
+         result:`<div class="rlabel">Not wrong, but not right</div><p>Escalating when in doubt is never punished, and this will not be held against you. But no person is at risk of harm here, and Level 5 is reserved for that. Overescalating a property crime consumes an emergency resource and, repeated, erodes the credibility of every future call you make from this GSOC.</p><p>The judgment you want: <b>life safety, or property?</b> Property with an on-site officer available is ${LVL(3)}.</p>`,
+         push:[['0150','Law enforcement notified. Supervisor notified.'],['0151','Supervisor query: was an on-site officer available for dispatch?','sys']],
+         next:b3},
+        {label:"Level 1 monitor and document until the subjects gain entry.",good:false,
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">You watched an attempted forced entry to completion. Both subjects are inside a distribution centre with an interior officer who does not know they are coming. You have converted a preventable property crime into an encounter risk for your own officer.</p>`,
+         push:[['0153','Roll-door defeated. Both subjects inside.','crit'],['0153','Interior officer on patrol, unbriefed, approaching Aisle 12.','crit']],
+         next:b3}
+      ]});
+    }
+
+    /* --- beat 2, recovery path after deprioritising --- */
+    function b2r(){
+      recovered=true;
+      beat({q:"Perimeter is breached and the interior officer is on patrol inside the building. You are behind. What now?",
+      options:[
+        {label:"Brief the interior officer immediately with location and subject count, notify the Supervisor, and escalate to Level 5 — an officer is now at risk of encountering intruders.",good:true,
+         result:`<div class="rlabel">Good recovery</div><p class="good">You reframed the event correctly. The moment your own officer may walk into two intruders, this is a life-safety exposure, and the parallel rule applies. You cannot recover the nine minutes, but you stopped the situation from getting worse.</p>`,
+         push:[['0158','Officer briefed: two subjects inside, entry via rear roll-door. Hold position.'],['0158','Level 5 notified. Level 2 notified in parallel.']],
+         next:b3},
+        {label:"Dispatch the officer to Aisle 12 to investigate the interior motion.",good:false,
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">You have sent a lone officer toward two intruders with no brief, no subject count and no warning. This is the same error as the original deprioritisation, compounded — acting without the picture you could have had.</p>`,
+         push:[['0159','Officer proceeding to Aisle 12, unbriefed.','crit']],
+         next:b3},
+        {label:"Write up the missed alerts first so the record is accurate before you act.",good:false,
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">Documentation is mandatory and it is never first. An active breach with an officer inside the building is a live event. Documenting while it runs means you are keeping the record of an incident you chose not to manage.</p>`,
+         push:[['0200','Event still active. No notification made.','crit']],
+         next:b3}
+      ]});
+    }
+
+    /* --- beat 3 --- */
+    function b3(){
+      beat({q:"The event resolves. Subjects depart the site at 0203. What closes this incident correctly?",
+      options:[
+        {label:"Complete the incident record with the full timeline, verification outcome, every notification with level and time, and outcome — then submit for Supervisor review before closure.",good:true,
+         result:`<div class="rlabel">Correct</div><p class="good">${SOP('§6.5')}. The Supervisor reviews for completeness and accuracy <i>before</i> the incident is closed — closure is not the operator's unilateral act.</p><p>Retention is governed by policy: ${CF('record retention period')}.</p>`,
+         push:[['0210','Incident record submitted for Supervisor review.']],
+         next:null},
+        {label:"Close the incident — the subjects left and there was no loss.",good:false,
+         flag:"Closed an incident without a complete record and Supervisor review (SC-13)",
+         result:`<div class="rlabel">Automatic fail condition</div><p class="risk">Closure without a complete record and Supervisor review is a recorded automatic-fail condition. "No loss" is an outcome, not a disposition, and an attempted forced entry at a distribution centre is exactly the kind of event that resurfaces months later in a claim or a pattern analysis.</p>`,
+         push:[['0204','Incident closed. No record. No review.','crit']],
+         next:null},
+        {label:"Log a one-line summary and carry it to shift handover for the next operator to write up.",good:false,
+         result:`<div class="rlabel">Operational consequence</div><p class="risk">You have handed an incomplete record to someone who did not see the event. The detail that makes it defensible — camera, timestamp, subject description, the pry bar — lives only in your memory, and your shift is ending.</p>`,
+         push:[['0205','Partial entry logged. Handover flagged.','crit']],
+         next:null}
+      ]});
+    }
+
+    function debrief(){
+      const clean = path.length && !S.flags.some(f=>f.includes('SC-13'));
+      score('sc13', clean?12:(recovered?7:5),12,"Decision-making with incomplete information");
+      body.innerHTML=`
+        <div class="rlabel">SC-13 debrief</div>
+        <p>Your path:</p>
+        <ol class="small">${path.map(p=>'<li>'+p+'</li>').join('')}</ol>
+        <p class="small muted">${clean
+          ? 'Clean run. Verification before action, correct level selection, complete closure.'
+          : (recovered
+            ? 'You went off-procedure and recovered. Recovery counts — most real incidents are recovered rather than run perfectly. Note what the delay cost, because the timeline keeps that cost permanently.'
+            : 'Review the branch where you acted before you had the picture. Every consequence in this scenario followed from that single decision.')}</p>
+        <div class="rlabel">The pattern to carry</div>
+        <p>Every poor branch in SC-13 shares one shape: <b>acting on the picture you assumed instead of the picture you had.</b> That is the whole failure mode, and it is why verification sits where it does in the cycle.</p>`;
+      S.done.add(4); paint();
+    }
+
+    b1();
+  }
+},
+
+/* ---------------- 5. PRIORITISATION ---------------- */
+{
+  nav:"5 · Prioritisation",
+  render(){return `
+  <p class="eyebrow">Exercise · Level 4 — competing priorities</p>
+  <h1>Five events, one operator</h1>
+  <p class="small muted">Rank in the order you would take them. Then we score the ranking against life safety first.</p>
+
+  <div class="card">
+    <p class="small muted">All five are live at 0312. You are the only operator on the console.</p>
+    <ul class="rank" id="ranklist"></ul>
+    <div class="btnrow"><button class="btn" id="ranksubmit">Submit ranking</button></div>
+    <div class="reveal" id="rankrev"></div>
+  </div>
+  `;},
+  init(){
+    const items=[
+      {id:'a',t:"Forced-door alert at a distribution centre — unverified"},
+      {id:'b',t:"LVT tower offline at a monitored retail site — no other events at that site"},
+      {id:'c',t:"Employee calling the GSOC for badge assistance"},
+      {id:'d',t:"Severe weather warning issued for a monitored region"},
+      {id:'e',t:"Panic / duress activation at a retail site"}
+    ];
+    let order=[...items];
+    const ideal=['e','a','d','b','c'];
+    const list=document.getElementById('ranklist');
+
+    function paintRank(){
+      list.innerHTML='';
+      order.forEach((it,i)=>{
+        const li=document.createElement('li');
+        li.innerHTML=`<span class="pos">${i+1}</span><span class="txt">${it.t}</span>`;
+        const ar=document.createElement('span'); ar.className='arrows';
+        const up=document.createElement('button'); up.textContent='↑'; up.setAttribute('aria-label','Move up');
+        const dn=document.createElement('button'); dn.textContent='↓'; dn.setAttribute('aria-label','Move down');
+        up.onclick=()=>{if(i>0){[order[i-1],order[i]]=[order[i],order[i-1]];paintRank();}};
+        dn.onclick=()=>{if(i<order.length-1){[order[i+1],order[i]]=[order[i],order[i+1]];paintRank();}};
+        ar.append(up,dn); li.appendChild(ar); list.appendChild(li);
+      });
+    }
+    paintRank();
+
+    document.getElementById('ranksubmit').onclick=()=>{
+      const mine=order.map(o=>o.id);
+      let pts=0;
+      mine.forEach((id,i)=>{ if(ideal[i]===id) pts+=2; else if(Math.abs(ideal.indexOf(id)-i)===1) pts+=1; });
+      const duressFirst = mine[0]==='e';
+      if(!duressFirst) flag("Ranked a duress activation below a non-life-safety event (Prioritisation exercise)");
+      score('rank',pts,10,"Situational awareness under load");
+      logIt('Prioritisation submitted — '+pts+'/10');
+
+      const rev=document.getElementById('rankrev');
+      rev.innerHTML=`
+        <div class="rlabel">Your score</div>
+        <p class="${pts>=8?'good':(pts>=5?'':'risk')}"><b>${pts}/10.</b> ${pts>=8?'Strong triage instinct.':(pts>=5?'Workable, with one or two misreads.':'Re-read the ordering logic below before you go further.')}</p>
+        ${duressFirst?'':`<div class="failflag"><b>Recorded condition.</b> A duress activation did not come first. A duress button is a human being telling you they are in trouble. It outranks everything on this list, every time, without verification delay.</div>`}
+        <div class="rlabel">Recommended order</div>
+        <table>
+          <thead><tr><th>#</th><th>Event</th><th>Why here</th><th>Level</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">1</td><td>Panic / duress activation</td><td>Life safety, declared by a person. Verify while escalating, not before.</td><td>${LVL(5)} + ${LVL(2)}</td></tr>
+            <tr><td class="mono">2</td><td>Forced-door alert, unverified</td><td>Potential intrusion, time-sensitive, and it may itself be life safety once you look. Verification is fast and cheap.</td><td>${LVL(3)} on verification</td></tr>
+            <tr><td class="mono">3</td><td>Severe weather warning</td><td>Affects multiple sites and possibly your own facility. Time-boxed, and it changes how you read every other event on the board.</td><td>${LVL(2)}</td></tr>
+            <tr><td class="mono">4</td><td>Tower offline</td><td>A coverage gap, not an event. Must be declared, compensated and gap-logged — but it is not resolved by staring at it.</td><td>${LVL(2)}</td></tr>
+            <tr><td class="mono">5</td><td>Badge assistance call</td><td>Real, and it matters to the person calling. It is also the only item here that can wait without anyone being harmed.</td><td>${LVL(1)}</td></tr>
+          </tbody>
+        </table>
+        <div class="rlabel">The two things ranking alone will not teach you</div>
+        <p><b>Some of these run in parallel.</b> The weather warning and the tower outage are both notifications — you can raise them while you hold on a line for something else. Ranking is not the same as queueing.</p>
+        <p><b>Some of these get handed off.</b> With five live events and one operator, the badge call goes to the Supervisor or to a callback, not to the bottom of your own list where you will forget it. Delegating is a triage decision, not an admission you cannot cope.</p>
+        <div class="rlabel">Ordering logic</div>
+        <p class="mono small">life safety → threat severity → time sensitivity → escalation requirement → business impact</p>`;
+      rev.classList.add('show');
+      S.done.add(5); paint();
+    };
+  }
+},
+
+/* ---------------- 6. COMMUNICATION ---------------- */
+{
+  nav:"6 · Dispatch message",
+  render(){return `
+  <p class="eyebrow">Exercise · Communication</p>
+  <h1>Write the dispatch</h1>
+  <p class="small muted">Governing content standard ${SOP('SOP-GSOC-001 §6.3')} — five required elements</p>
+
+  <div class="card">
+    <div class="feed" style="margin-bottom:16px">
+      <div class="feedhead">Verified event · DC-4417 · 0151</div>
+      <div class="feedrow"><div class="t">0149</div><div>Camera 3: two subjects at rear roll-door. One holding a pry bar at the door edge. Second facing the yard, scanning.</div></div>
+      <div class="feedrow"><div class="t">0150</div><div>Camera 6: white panel van, engine running, reversed to the loading apron 40 ft from the roll-door. Third subject in driver's seat.</div></div>
+      <div class="feedrow sys"><div class="t">note</div><div>On-site officer: one, unarmed, currently on interior patrol at the north end of the building.</div></div>
+    </div>
+    <p class="prompt">Write the direct-to-guard dispatch message you would send. Keep it to what the officer needs to respond safely.</p>
+    <textarea id="commtext" placeholder="Type your dispatch message…"></textarea>
+    <div class="btnrow"><button class="btn" id="commsubmit">Submit dispatch</button></div>
+    <div class="reveal" id="commrev"></div>
+  </div>
+  `;},
+  init(){
+    document.getElementById('commsubmit').onclick=()=>{
+      const txt=document.getElementById('commtext').value.trim();
+      if(txt.length<15){ alert('Write your dispatch message before submitting. This exercise scores what you wrote, not what you intended.'); return; }
+      logIt('Dispatch message submitted ('+txt.split(/\s+/).length+' words)');
+      const rev=document.getElementById('commrev');
+      rev.innerHTML=`
+        <div class="rlabel">Score your own dispatch</div>
+        <p class="small muted">Tick only what is actually present in what you wrote. Be strict — the officer only gets what you sent.</p>
+        <div id="commchk"></div>
+        <div class="btnrow"><button class="btn ghost" id="commscore">Lock score and show model</button></div>
+        <div class="reveal" id="commmodel"></div>`;
+      rev.classList.add('show');
+
+      const criteria=[
+        "<b>Site</b> named (DC-4417)",
+        "<b>Precise location</b> within the site — rear roll-door, loading apron. Not just \"the back\".",
+        "<b>Nature of the event</b> — attempted forced entry",
+        "<b>Number of subjects</b> — three, including the driver",
+        "<b>Safety consideration</b> — pry bar present, vehicle running, officer is unarmed and alone",
+        "Vehicle described (white panel van, engine running, reversed to the apron)",
+        "An explicit instruction — hold, observe, or do not approach alone",
+        "No inference stated as fact (no \"burglary\", no \"they're stealing\")",
+        "Under about 60 words"
+      ];
+      const cw=document.getElementById('commchk');
+      criteria.forEach((c,i)=>{
+        const d=document.createElement('label'); d.className='chk';
+        d.innerHTML=`<input type="checkbox" data-i="${i}"><span>${c}</span>`;
+        cw.appendChild(d);
+      });
+
+      document.getElementById('commscore').onclick=()=>{
+        const n=[...cw.querySelectorAll('input:checked')].length;
+        const pts=Math.round(n/criteria.length*10);
+        score('comm',pts,10,"Communication");
+        const m=document.getElementById('commmodel');
+        m.innerHTML=`
+          <div class="rlabel">Self-scored</div>
+          <p><b>${n}/${criteria.length} criteria met · ${pts}/10.</b> ${n>=8?'<span class="good">This is a dispatch an officer can act on safely.</span>':(n>=5?'Serviceable, but you left the officer working with gaps.':'<span class="risk">The officer is going in blind on the things that could hurt him.</span>')}</p>
+          <div class="rlabel">Model dispatch</div>
+          <div class="card tight" style="background:#090A0E"><p class="mono small" style="margin:0">0151 — DC-4417, rear roll-door on the loading apron. Attempted forced entry in progress. Three subjects: one at the door with a pry bar, one scanning the yard, one in a white panel van reversed to the apron, engine running. You are alone and unarmed — do not approach. Hold at cover, observe, confirm when you have eyes. I have live camera on you and on them.</p></div>
+          <div class="rlabel">What makes it work</div>
+          <ul>
+            <li>All five required elements land in the first two sentences.</li>
+            <li>The pry bar and the running van are stated as <i>safety information</i>, which is what turns a description into a brief.</li>
+            <li>It gives an instruction. A dispatch without a directive leaves the officer to invent one.</li>
+            <li>Not one word of inference. No "burglary", no "they're going to run". Everything in it is on camera.</li>
+            <li>The last line matters more than it looks: an officer who knows he is being watched behaves differently from one who thinks he is alone.</li>
+          </ul>`;
+        m.classList.add('show');
+        logIt('Dispatch self-scored '+pts+'/10');
+        S.done.add(6); paint();
+      };
+    };
+  }
+},
+
+/* ---------------- 7. SPOT THE PROBLEM ---------------- */
+{
+  nav:"7 · Spot the problem",
+  render(){return `
+  <p class="eyebrow">Exercise · Level 3 — incident assessment</p>
+  <h1>Spot the problem</h1>
+  <p class="small muted">A real shift narrative, reconstructed from the record. Count the failures before you reveal.</p>
+
+  <div class="card">
+    <div class="feed">
+      <div class="feedhead">Shift narrative · reconstructed from the incident record</div>
+      <div class="feedrow"><div class="t">0104</div><div>Intrusion alert, RT-2081, garden centre. Operator acknowledges and clears — "same as earlier tonight".</div></div>
+      <div class="feedrow"><div class="t">0119</div><div>Second alert, same zone. Operator dispatches the on-site officer: "Something at the garden centre, go check it."</div></div>
+      <div class="feedrow"><div class="t">0126</div><div>Officer reports a cut chain and an open gate. Operator logs: <i>"Officer found break-in. Probably the same guys from last week."</i></div></div>
+      <div class="feedrow"><div class="t">0131</div><div>Camera 2 for the garden centre has been offline since 2247 the previous evening. Not declared, not logged.</div></div>
+      <div class="feedrow"><div class="t">0140</div><div>Operator calls the client contact and gives the name and mobile number of the employee who reported a similar issue last week.</div></div>
+      <div class="feedrow"><div class="t">0152</div><div>Operator notifies the Program Supervisor.</div></div>
+      <div class="feedrow"><div class="t">0158</div><div>Incident closed by the operator. Timeline entered without times. No Supervisor review.</div></div>
+      <div class="feedrow sys"><div class="t">0600</div><div>Handover: passdown does not mention RT-2081 or the offline camera.</div></div>
+    </div>
+    <p class="prompt">How many problems can you identify? Enter your count and, if you like, list them.</p>
+    <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+      <input id="spotcount" type="number" min="0" max="30" placeholder="count"
+        style="width:96px;background:#090A0E;color:var(--frost);border:1px solid var(--line);border-radius:5px;padding:10px;font-family:var(--mono)">
+    </div>
+    <textarea id="spotlist" placeholder="Optional — list the problems you found, one per line."></textarea>
+    <div class="btnrow"><button class="btn" id="spotsubmit">Submit and reveal</button></div>
+    <div class="reveal" id="spotrev"></div>
+  </div>
+  `;},
+  init(){
+    document.getElementById('spotsubmit').onclick=()=>{
+      const c=parseInt(document.getElementById('spotcount').value||'0',10);
+      if(!c){ alert('Enter your count first. Committing to a number before the reveal is the point of the exercise.'); return; }
+      const TOTAL=9;
+      const pts=Math.max(0,10-Math.abs(TOTAL-c)*2);
+      score('spot',pts,10,"Incident assessment");
+      logIt('Spot the problem — counted '+c+' of '+TOTAL);
+      const rev=document.getElementById('spotrev');
+      rev.innerHTML=`
+        <div class="rlabel">You counted ${c}. There are ${TOTAL}.</div>
+        <table>
+          <thead><tr><th>Time</th><th>Failure</th><th>Procedure</th><th>Consequence</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0104</td><td>Alert cleared with no visual verification, on false-alert history</td><td>${SOP('§6.1/§6.2')}</td><td>Fifteen minutes of uncontested access. Nothing in the record shows anyone looked.</td></tr>
+            <tr><td class="mono">0119</td><td>Dispatch with none of the five required content elements</td><td>${SOP('§6.3')}</td><td>Officer approaches an unknown alone with no subject count and no safety information.</td></tr>
+            <tr><td class="mono">0119</td><td>Dispatch made without verification first</td><td>${SOP('§6.2')}</td><td>A resource committed on an assumption, and no camera record of what was there before he arrived.</td></tr>
+            <tr><td class="mono">0126</td><td>"Break-in" recorded as fact; "probably the same guys" is speculation</td><td>${SOP('§6.5')}</td><td>Unsupported allegation in a legal record, attached to unidentified people.</td></tr>
+            <tr><td class="mono">0131</td><td>Camera offline for over two hours, never declared, no gap log</td><td>Degraded mode</td><td>Coverage was never as represented to the client. The gap is undocumented and unrecoverable.</td></tr>
+            <tr><td class="mono">0140</td><td>An employee's name and mobile number disclosed with no operational need</td><td>${SOP('Part A')}</td><td>Unnecessary personal-information disclosure, entirely avoidable.</td></tr>
+            <tr><td class="mono">0152</td><td>Supervisor notified 48 minutes after a confirmed perimeter breach</td><td>${SOP('§7')}</td><td>The one person who could reassess and escalate was excluded from the whole event.</td></tr>
+            <tr><td class="mono">0158</td><td>Incident closed by the operator with no times and no Supervisor review</td><td>${SOP('§6.5')}</td><td>Automatic-fail territory. The record cannot support a claim, a prosecution or a KPI.</td></tr>
+            <tr><td class="mono">0600</td><td>Passdown omits an open incident and a known equipment fault</td><td>Handover</td><td>The incoming operator inherits a degraded site and does not know it.</td></tr>
+          </tbody>
+        </table>
+        <div class="rlabel">The thing worth noticing</div>
+        <p>Not one of these is exotic. Every failure here is an ordinary shortcut taken by someone who was busy, and they compound: the unverified clear at 0104 is what made the bad dispatch at 0119 necessary, and the missing camera made verification impossible in the first place — if anyone had known it was down.</p>`;
+      rev.classList.add('show');
+      S.done.add(7); paint();
+    };
+  }
+},
+
+/* ---------------- 8. INCIDENT REPORT ---------------- */
+{
+  nav:"8 · Incident report",
+  render(){return `
+  <p class="eyebrow">Exercise · Documentation</p>
+  <h1>Write the incident record</h1>
+  <p class="small muted">Legal-grade standard ${SOP('SOP-GSOC-001 §6.5')} — factual, timestamped, objective, defensible</p>
+
+  <div class="card">
+    <h3>Raw information — deliberately unordered</h3>
+    <ul class="small">
+      <li>Site RT-2081, garden centre enclosure. Store closed, no scheduled overnight activity.</li>
+      <li>0322 — Camera 2: one subject at the chained gate, pulling repeatedly on the chain, gloved, dark bag on the ground at his feet.</li>
+      <li>0319 — intrusion alert received, garden centre zone, analytics: person. Acknowledged 0319.</li>
+      <li>0327 — subject departs on foot eastbound across the front lot. Bag still in his possession.</li>
+      <li>0323 — Camera 4: silver sedan, front lot, parked across two spaces, engine off, plate not readable from available angle.</li>
+      <li>0324 — direct-to-guard dispatch to on-site officer. Brief given: site, gate location, one subject, gloved, bag present, do not approach alone.</li>
+      <li>0324 — Program Supervisor notified, Level 2.</li>
+      <li>0329 — officer on scene. Chain intact, gate secure, no damage observed. Bag not recovered.</li>
+      <li>0331 — silver sedan departs front lot northbound. Single occupant. Plate not obtained.</li>
+      <li>0334 — officer completes perimeter check. No further subjects, no signs of entry.</li>
+      <li>Camera 6 (east fence line) offline since 0140. Fault reported at 0145, gap logged.</li>
+    </ul>
+    <p class="prompt">Write the incident record. Then score it against the rubric.</p>
+    <textarea id="rpttext" style="min-height:230px" placeholder="Write your incident record…"></textarea>
+    <div class="btnrow"><button class="btn" id="rptsubmit">Submit report</button></div>
+    <div class="reveal" id="rptrev"></div>
+  </div>
+  `;},
+  init(){
+    document.getElementById('rptsubmit').onclick=()=>{
+      const txt=document.getElementById('rpttext').value.trim();
+      if(txt.split(/\s+/).length<30){ alert('Write the report before submitting — at least a few sentences. Reports are scored on what is on the page.'); return; }
+      logIt('Incident record submitted ('+txt.split(/\s+/).length+' words)');
+      const rubric=[
+        ["Who","Subject described by observable features only. Officer and Supervisor identified by role.",10],
+        ["What","Attempted entry to the garden centre enclosure, stated as observation not conclusion.",10],
+        ["When","Every entry carries a time. Alert, acknowledgement, verification, dispatch, notification, departure, all-clear.",12],
+        ["Where","Site ID and precise location within the site, plus the camera each observation came from.",10],
+        ["Actions taken","Acknowledgement, verification across multiple views, dispatch, perimeter check.",12],
+        ["Notifications","Every notification with its level and its time — Level 3 dispatch 0324, Level 2 Supervisor 0324.",12],
+        ["Outcome","Chain intact, gate secure, no entry, no damage, subject and vehicle departed, plate not obtained.",10],
+        ["Objectivity","No intent, no motive, no speculation. The sedan is not linked to the subject because nothing observed links them.",12],
+        ["Chronology","Strictly sequential. The raw information was not in order; your report must be.",6],
+        ["Professional writing","Active voice naming who acted. The offline camera and its gap log are disclosed, not buried.",6]
+      ];
+      const rev=document.getElementById('rptrev');
+      rev.innerHTML=`
+        <div class="rlabel">Score your report — 0 to 100</div>
+        <p class="small muted">Award yourself the full weight only where the element is fully present. Partial credit is fine; be honest, since the version of you that gets audited is not the generous one.</p>
+        <div id="rptrows"></div>
+        <div class="btnrow"><button class="btn ghost" id="rptscore">Lock score and show coaching</button></div>
+        <div class="reveal" id="rptcoach"></div>`;
+      rev.classList.add('show');
+
+      const rows=document.getElementById('rptrows');
+      rubric.forEach((r,i)=>{
+        const d=document.createElement('div');
+        d.style.cssText='display:flex;gap:12px;align-items:center;margin:0 0 8px;flex-wrap:wrap';
+        d.innerHTML=`<span class="mono" style="min-width:118px;font-size:12px">${r[0]}</span>
+          <input type="range" min="0" max="${r[2]}" value="0" data-i="${i}" style="flex:1;min-width:150px;accent-color:var(--prism)">
+          <span class="mono" style="min-width:44px;text-align:right;font-size:12px" id="rv${i}">0/${r[2]}</span>`;
+        rows.appendChild(d);
+        const inp=d.querySelector('input');
+        inp.oninput=()=>{document.getElementById('rv'+i).textContent=inp.value+'/'+r[2];};
+      });
+
+      document.getElementById('rptscore').onclick=()=>{
+        const vals=[...rows.querySelectorAll('input')].map(i=>+i.value);
+        const total=vals.reduce((a,b)=>a+b,0);
+        score('rpt',Math.round(total/10),10,"Documentation");
+        const weakest=rubric.map((r,i)=>({n:r[0],pct:vals[i]/r[2],note:r[1]})).sort((a,b)=>a.pct-b.pct).slice(0,3);
+        const c=document.getElementById('rptcoach');
+        c.innerHTML=`
+          <div class="rlabel">Report score</div>
+          <div class="scorebig">${total}<span class="muted" style="font-size:20px">/100</span></div>
+          <div class="meter"><i style="width:${total}%"></i></div>
+          <p class="small ${total>=80?'good':(total>=70?'':'risk')}" style="margin-top:12px">${
+            total>=90?'Legal-grade. This report would hold up.':
+            total>=80?'Solid. Tighten the weakest elements below.':
+            total>=70?'Incomplete in ways that would be visible in an audit.':
+            'This record could not support a claim, a prosecution or a KPI. Rewrite it.'}</p>
+          <div class="rlabel">Your three weakest elements</div>
+          <ul>${weakest.map(w=>`<li><b>${w.n}</b> — ${w.note}</li>`).join('')}</ul>
+          <div class="rlabel">The three deductions operators do not see coming</div>
+          <ul>
+            <li><b>Passive voice hiding the actor.</b> "The officer was dispatched" does not say who dispatched him. "I dispatched the on-site officer at 0324" does. Under examination, the difference matters.</li>
+            <li><b>The sedan.</b> If you wrote the vehicle into the narrative as connected to the subject, you asserted a link nothing observed supports. Record it as a separate observation, at its own time, with no connective tissue.</li>
+            <li><b>The offline camera.</b> Camera 6 was down for the entire incident. If it is not in your report, your report overstates the coverage you had. Disclose the gap and reference the gap log — a disclosed limitation is credibility, a discovered one is a problem.</li>
+          </ul>`;
+        c.classList.add('show');
+        logIt('Incident record self-scored '+total+'/100');
+        S.done.add(8); paint();
+      };
+    };
+  }
+},
+
+/* ---------------- 9. FINAL ---------------- */
+{
+  nav:"9 · Final assessment",
+  render(){return `
+  <p class="eyebrow">Certification assessment · 25 questions · pass mark 80%</p>
+  <h1>Final assessment</h1>
+  <p class="small muted">Answers are withheld until you submit. Every item is scored to a competency.</p>
+
+  <div class="card tight">
+    <h3 style="margin-top:0">Automatic fail conditions</h3>
+    <p class="small" style="margin-bottom:6px">These override your total score. Read them now, not afterwards.</p>
+    <ul class="small" style="margin-bottom:0">
+      <li>Holding a life-safety escalation pending Supervisor availability.</li>
+      <li>Dispatching or escalating on assumption without visual verification, absent a documented SOW exception.</li>
+      <li>Closing an incident with no record, or with a record containing a knowing inaccuracy.</li>
+      <li>Performing out-of-scope monitoring on request rather than escalating it.</li>
+    </ul>
+  </div>
+
+  <div id="finalq"></div>
+  <div class="btnrow"><button class="btn" id="finalsubmit">Submit assessment</button></div>
+  <div class="reveal" id="finalrev"></div>
+  `;},
+  init(){
+    const Q=[
+      {c:"Alert response & triage",q:"An alert arrives. What is the correct first action?",o:["Verify visually, then acknowledge","Acknowledge, then verify visually","Dispatch, then verify","Notify the Supervisor, then acknowledge"],a:[1]},
+      {c:"Alert response & triage",q:"Acknowledgement of an alert establishes that:",o:["The alert is resolved","The alert is a false alert","The operator has taken ownership and the clock has started","The Supervisor has been notified"],a:[2]},
+      {c:"LVT console & visual verification",q:"Visual verification exists to establish:",o:["Observable fact","Subject intent","Likely motive","Whether the analytics are tuned correctly"],a:[0]},
+      {c:"LVT console & visual verification",q:"A single camera shows an empty frame for the alerting zone. You have established that:",o:["The zone is clear","That camera's field of view is unoccupied","The alert was false","The subject has left the site"],a:[1]},
+      {c:"Escalation-level selection",q:"Which level is direct-to-guard dispatch?",o:["Level 2","Level 3","Level 4","Level 5"],a:[1]},
+      {c:"Escalation-level selection",q:"Which level is client / management notification?",o:["Level 3","Level 4","Level 5","Level 6"],a:[1]},
+      {c:"Escalation-level selection",q:"Verified life-safety threat. The Supervisor does not answer. You:",o:["Try again, then escalate once you have authorisation","Escalate to Level 5 now and notify Level 2 in parallel","Dispatch the guard and wait for his report","Notify the client contact so they can call it in"],a:[1],fail:"Held a life-safety escalation pending Supervisor availability (final assessment)"},
+      {c:"Escalation-level selection",q:"Verified subject inside a fenced lot, no weapon, no person at risk. Correct level:",o:["Level 1","Level 3 with Level 2 notification","Level 5","Level 6"],a:[1]},
+      {c:"Escalation-level selection",q:"Who owns the client relationship and law-enforcement escalation policy?",o:["The Program Supervisor","The LVT SME","Kyle Walsh","QA"],a:[2]},
+      {c:"Incident assessment",q:"An event presenting risk to human life or serious bodily harm is defined as:",o:["An actionable event","A life-safety threat","A critical alert","A Level 4 event"],a:[1]},
+      {c:"Incident assessment",q:"A false alert is:",o:["Any alert that does not result in dispatch","A non-actionable alert — environmental, animal or authorised activity","An alert the operator could not verify","An alert from a tower with a known fault"],a:[1]},
+      {c:"Incident assessment",q:"Eleven false alerts at a site last shift. A new alert arrives at that site. It:",o:["May be closed without verification","Requires verification like any other alert","Should be routed to the Supervisor","Should be suppressed until maintenance responds"],a:[1],fail:"Closed an alert without visual verification on false-alert history (final assessment)"},
+      {c:"Documentation",q:"Which entry meets the legal-grade standard?",o:["\"Subject was clearly casing the building.\"","\"Two subjects at the north dock at 0241, both in dark clothing.\"","\"Probably the same crew as last week.\"","\"Suspicious activity, recommend dispatch.\""],a:[1]},
+      {c:"Documentation",q:"Who closes an incident?",o:["The operator, once the event resolves","The operator, after Supervisor review for completeness and accuracy","QA, at the next audit cycle","The client contact"],a:[1]},
+      {c:"Documentation",q:"A camera was offline for the duration of an incident. In the report you:",o:["Omit it — it is a maintenance matter","Disclose the outage and reference the gap log","Note it only if the client asks","Record the zone as covered, since other cameras were live"],a:[1]},
+      {c:"Communication",q:"How many content elements does a direct-to-guard dispatch require?",o:["Three","Four","Five","Seven"],a:[2]},
+      {c:"Communication",q:"Which is NOT one of the five required dispatch elements?",o:["Site","Number of subjects","Estimated value of property at risk","Safety considerations"],a:[2]},
+      {c:"Situational awareness under load",q:"Five concurrent events. Which do you take first?",o:["Forced-door alert, unverified","Panic / duress activation","Severe weather warning","Tower offline"],a:[1],fail:"Ranked a duress activation below a non-life-safety event (final assessment)"},
+      {c:"Situational awareness under load",q:"With five live events and one operator, a badge-assistance call should be:",o:["Placed last on your own list","Handed to the Supervisor or set for callback","Closed without action","Answered first because a person is waiting"],a:[1]},
+      {c:"Decision-making with incomplete information",q:"An LVT tower goes offline. The correct handling is to:",o:["Wait for the platform to report recovery","Declare degraded mode, apply compensating controls, log the coverage gap","Close all open alerts for that site","Notify the client only once the tower is restored"],a:[1]},
+      {c:"Decision-making with incomplete information",q:"A client contact asks the GSOC to start monitoring a camera feed not in the SOW. You:",o:["Monitor it as a courtesy","Monitor it and note it in the record","Decline and escalate the request rather than accommodate it","Add it to the console and inform the next shift"],a:[2],fail:"Performed out-of-scope monitoring on request rather than escalating it (final assessment)"},
+      {c:"Decision-making with incomplete information",q:"Information is incomplete and conflicting, and a person may be at risk. The correct bias is to:",o:["Gather more information before acting","Escalate, and state your assumptions in the record","Hold at Level 1 until the picture clarifies","Defer to the on-site officer's judgment"],a:[1]},
+      {c:"Alert response & triage",q:"A site may be monitored under SOP-GSOC-001 only once it has:",o:["A completed site survey","Recorded a 100% viewing-and-communication pass under SOP-GSOC-004","An assigned site ID","A named client escalation contact"],a:[1]},
+      {c:"Documentation",q:"An item marked [CONFIRM] in a procedure means:",o:["The operator uses their best judgment for the value","It is a programme-level item not yet ratified, listed for closure before sign-off","It is confidential and withheld from operators","It has been confirmed and needs no further action"],a:[1]},
+      {c:"Incident assessment",q:"Where a training module and general industry practice conflict, the operator follows:",o:["Industry practice, as the wider standard","The controlled SOP","Whichever the Supervisor prefers","The client's stated preference"],a:[1]}
+    ];
+
+    const wrap=document.getElementById('finalq');
+    const picks=new Array(Q.length).fill(null);
+    Q.forEach((q,qi)=>{
+      const d=document.createElement('div');
+      d.className='card';
+      d.innerHTML=`<p class="mono muted" style="font-size:11px;margin-bottom:6px">Q${String(qi+1).padStart(2,'0')} · ${q.c}</p><p class="prompt">${q.q}</p><div class="opts" id="fq${qi}"></div><div class="reveal" id="fr${qi}"></div>`;
+      wrap.appendChild(d);
+      const ow=d.querySelector('#fq'+qi);
+      q.o.forEach((o,oi)=>{
+        const b=document.createElement('button');
+        b.className='opt';
+        b.innerHTML=`<span class="k">${String.fromCharCode(65+oi)}</span><span>${o}</span>`;
+        b.onclick=()=>{
+          [...ow.children].forEach(c=>c.classList.remove('sel'));
+          b.classList.add('sel'); picks[qi]=oi;
+        };
+        ow.appendChild(b);
+      });
+    });
+
+    document.getElementById('finalsubmit').onclick=()=>{
+      const missing=picks.filter(p=>p===null).length;
+      if(missing){ alert(missing+' question'+(missing>1?'s':'')+' unanswered. Answer all 25 before submitting.'); return; }
+
+      const comp={}; COMPS.forEach(c=>comp[c]={e:0,m:0});
+      let right=0;
+      Q.forEach((q,qi)=>{
+        const ok=q.a.includes(picks[qi]);
+        if(ok) right++;
+        comp[q.c].m++; if(ok) comp[q.c].e++;
+        if(!ok && q.fail) flag(q.fail);
+        const rev=document.getElementById('fr'+qi);
+        const ow=document.getElementById('fq'+qi);
+        [...ow.children].forEach((c,ci)=>{
+          c.disabled=true;
+          if(q.a.includes(ci)) c.classList.add('right');
+          else if(ci===picks[qi]) c.classList.add('wrong');
+        });
+        rev.innerHTML=ok?'<p class="good small" style="margin:0">Correct.</p>'
+          :`<p class="risk small" style="margin:0">Incorrect. Correct answer: <b>${String.fromCharCode(65+q.a[0])}</b>.</p>`;
+        rev.classList.add('show');
+      });
+
+      /* fold in exercise scores */
+      Object.values(S.points).forEach(p=>{ if(comp[p.comp]){comp[p.comp].e+=p.earned; comp[p.comp].m+=p.max;} });
+
+      const pct=Math.round(right/Q.length*100);
+      const band = pct>=90?["Advanced — recommend for independent console operations","var(--green)"]
+                 : pct>=80?["Qualified — ready for normal Phase 2 probation supervision","var(--prism)"]
+                 : pct>=70?["Additional coaching required — targeted re-training before reassessment","var(--amber)"]
+                 : ["Retraining required — repeat module, no console assignment","var(--red)"];
+      const failed = S.flags.length>0;
+      logIt('Final assessment submitted — '+pct+'/100');
+
+      const weak=Object.entries(comp).filter(([,v])=>v.m).map(([k,v])=>({k,pct:Math.round(v.e/v.m*100)})).sort((a,b)=>a.pct-b.pct);
+
+      const rev=document.getElementById('finalrev');
+      rev.innerHTML=`
+        <h2 style="margin-top:0">Result</h2>
+        <div class="card">
+          <div class="scorebig">${pct}<span class="muted" style="font-size:22px">/100</span></div>
+          <div class="meter"><i style="width:${pct}%;background:${band[1]}"></i></div>
+          <p class="band" style="color:${band[1]};margin-top:14px">${band[0]}</p>
+          <p class="small muted" style="margin-bottom:0">${right} of 25 correct. Pass mark 80%.</p>
+        </div>
+
+        ${failed?`<div class="failflag">
+          <b>Automatic fail conditions triggered — ${S.flags.length}.</b> These override the total score. Certification is withheld regardless of percentage.
+          <ul class="small" style="margin:8px 0 0">${S.flags.map(f=>'<li>'+f+'</li>').join('')}</ul>
+        </div>`:`<div class="card tight" style="border-color:#2B5545;background:rgba(79,178,134,.07)">
+          <p class="small good" style="margin:0"><b>No automatic fail conditions triggered.</b> No life-safety escalation held, no action taken on assumption, no closure without record, no out-of-scope monitoring performed.</p></div>`}
+
+        <h2>Competency breakdown</h2>
+        <p class="small muted">Combines assessment items with the exercises you completed.</p>
+        <table><thead><tr><th>Competency</th><th style="width:96px">Score</th></tr></thead><tbody>
+        ${weak.slice().sort((a,b)=>COMPS.indexOf(a.k)-COMPS.indexOf(b.k)).map(w=>`<tr><td>${w.k}</td><td><span class="mono" style="color:${w.pct>=80?'var(--green)':(w.pct>=70?'var(--amber)':'var(--red)')}">${w.pct}%</span></td></tr>`).join('')}
+        </tbody></table>
+
+        <h2>Development plan</h2>
+        <p class="small muted">Re-read these before your Phase 2 probation begins.</p>
+        <ul>
+          ${weak.slice(0,3).map(w=>{
+            const map={
+              "Alert response & triage":"SOP-GSOC-001 §6.1 — acknowledgement and triage",
+              "LVT console & visual verification":"SOP-GSOC-001 §6.2 and SOP-GSOC-003 — verification standards",
+              "Incident assessment":"SOP-GSOC-001 §6.2 — classification of false alert vs actionable event",
+              "Escalation-level selection":"SOP-GSOC-001 §6.4 and §7 — the six-level model and the parallel rule",
+              "Communication":"SOP-GSOC-001 §6.3 — the five required dispatch elements",
+              "Documentation":"SOP-GSOC-001 §6.5 — legal-grade reporting and closure",
+              "Situational awareness under load":"SOP-GSOC-000 Part A and §7 — prioritisation and handoff",
+              "Decision-making with incomplete information":"SOP-GSOC-001 §6.4 — escalate-when-in-doubt, and degraded-mode handling"
+            };
+            return `<li><b>${w.k}</b> (${w.pct}%) — ${map[w.k]||'SOP-GSOC-001'}</li>`;
+          }).join('')}
+        </ul>
+        <p class="small">Supervisor focus areas for Phase 2: ${weak.slice(0,2).map(w=>w.k.toLowerCase()).join(' and ')}. Both should be observed live before independent console assignment.</p>
+
+        <h2>Appendix — open confirmations</h2>
+        <p class="small muted">Values referenced in this module that are not yet ratified at programme level. None was scored.</p>
+        <table><thead><tr><th>Item</th><th>Consequence if wrong</th></tr></thead><tbody>
+          <tr><td>SOW-committed acknowledgement time and KPI targets</td><td>Operators trained to a timing standard the SOW does not support; KPI reporting fails audit.</td></tr>
+          <tr><td>Dispatch method to on-site officers</td><td>The five required elements are taught without a confirmed channel to deliver them.</td></tr>
+          <tr><td>Incident-logging system selection</td><td>Documentation training does not match the system operators will actually use.</td></tr>
+          <tr><td>Per-site talk-down availability</td><td>Operators attempt a deterrent the site does not support, losing verification time.</td></tr>
+          <tr><td>SOW exception permitting action without visual verification</td><td>Either operators skip verification where they should not, or they delay where an exception applies.</td></tr>
+          <tr><td>Per-site law-enforcement jurisdiction references</td><td>Level 5 escalation routed to the wrong jurisdiction during a life-safety event.</td></tr>
+          <tr><td>Record retention period</td><td>Records destroyed before, or held past, the contractual obligation.</td></tr>
+        </tbody></table>
+        <p class="small muted">Close these before this module is issued to trainees.</p>
+        <div class="btnrow"><button class="btn ghost" onclick="window.print()">Print result</button></div>`;
+      rev.classList.add('show');
+      document.getElementById('finalsubmit').disabled=true;
+      S.done.add(9); paint();
+      rev.scrollIntoView({behavior:'smooth',block:'start'});
+    };
+  }
+}
+];
+
+/* ============================ generic widgets ============================ */
+
+function mcq({mount,reveal,id,options,correct,evalText,after,comp,onWrong}){
+  const wrap=document.getElementById(mount), rev=document.getElementById(reveal);
+  options.forEach((o,i)=>{
+    const b=document.createElement('button');
+    b.className='opt';
+    b.innerHTML=`<span class="k">${String.fromCharCode(65+i)}</span><span>${o}</span>`;
+    b.onclick=()=>{
+      [...wrap.children].forEach((c,ci)=>{
+        c.disabled=true;
+        if(ci===correct) c.classList.add('right');
+        else if(ci===i) c.classList.add('wrong');
+      });
+      const ok=i===correct;
+      if(!ok && onWrong) onWrong(i);
+      score(id,ok?6:2,6,comp);
+      logIt('“What would you do?” — option '+String.fromCharCode(65+i)+(ok?' (correct)':''));
+      rev.innerHTML=(evalText[i]||'')+(after||'');
+      rev.classList.add('show');
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function checks(mountId,idBase,items){
+  const host=document.getElementById(mountId);
+  items.forEach((it,ix)=>{
+    const card=document.createElement('div');
+    card.className='card';
+    const kind=it.type==='multi'?'Select all that apply':it.type==='tf'?'True / false':it.type==='short'?'Short answer':'Multiple choice';
+    card.innerHTML=`<p class="mono muted" style="font-size:11px;margin-bottom:6px">Check ${ix+1} · ${kind}</p><p class="prompt">${it.q}</p><div id="${idBase}${ix}w"></div><div class="reveal" id="${idBase}${ix}r"></div>`;
+    host.appendChild(card);
+    const w=document.getElementById(idBase+ix+'w'), r=document.getElementById(idBase+ix+'r');
+
+    if(it.type==='short'){
+      const ta=document.createElement('textarea'); ta.style.minHeight='80px'; ta.placeholder='Your answer…';
+      const br=document.createElement('div'); br.className='btnrow';
+      const bt=document.createElement('button'); bt.className='btn'; bt.textContent='Submit answer';
+      bt.onclick=()=>{
+        if(ta.value.trim().length<8){alert('Write an answer first.');return;}
+        ta.disabled=true; bt.disabled=true;
+        score(idBase+ix,3,4,it.comp);
+        logIt('Short answer submitted');
+        r.innerHTML=`<div class="rlabel">Model answer</div><p>${it.model}</p><div class="rlabel">Compare</div><p class="small muted">${it.ex}</p>`;
+        r.classList.add('show');
+      };
+      br.appendChild(bt); w.append(ta,br); return;
+    }
+
+    const multi=it.type==='multi';
+    const sel=new Set();
+    const ow=document.createElement('div'); ow.className='opts';
+    it.options.forEach((o,oi)=>{
+      const b=document.createElement('button');
+      b.className='opt';
+      b.innerHTML=`<span class="k">${multi?'▢':String.fromCharCode(65+oi)}</span><span>${o}</span>`;
+      b.onclick=()=>{
+        if(multi){
+          sel.has(oi)?sel.delete(oi):sel.add(oi);
+          b.classList.toggle('sel');
+          b.querySelector('.k').textContent=sel.has(oi)?'▣':'▢';
+        }else{ sel.clear(); sel.add(oi); [...ow.children].forEach(c=>c.classList.remove('sel')); b.classList.add('sel'); }
+      };
+      ow.appendChild(b);
+    });
+    const br=document.createElement('div'); br.className='btnrow';
+    const bt=document.createElement('button'); bt.className='btn'; bt.textContent='Submit';
+    bt.onclick=()=>{
+      if(!sel.size){alert('Select an answer first.');return;}
+      const mine=[...sel].sort((a,b)=>a-b), ans=[...it.a].sort((a,b)=>a-b);
+      const ok=mine.length===ans.length&&mine.every((v,k)=>v===ans[k]);
+      [...ow.children].forEach((c,ci)=>{
+        c.disabled=true;
+        if(it.a.includes(ci)) c.classList.add('right');
+        else if(sel.has(ci)) c.classList.add('wrong');
+      });
+      bt.disabled=true;
+      score(idBase+ix,ok?4:1,4,it.comp);
+      logIt('Knowledge check '+(ok?'correct':'incorrect'));
+      r.innerHTML=`<p class="${ok?'good':'risk'}" style="margin-bottom:8px"><b>${ok?'Correct.':'Not correct.'}</b></p><p class="small">${it.ex}</p>`;
+      r.classList.add('show');
+    };
+    br.appendChild(bt); w.append(ow,br);
+  });
+}
+
+/* ============================ router ============================ */
+function paint(){
+  const rail=document.getElementById('rail');
+  rail.innerHTML='<div class="railhead">Module contents</div>';
+  SECTIONS.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.className='navitem'+(i===S.page?' on':'')+(S.done.has(i)?' done':'');
+    b.innerHTML=`<span class="n">${String(i).padStart(2,'0')}</span><span>${s.nav}</span>`;
+    b.onclick=()=>go(i);
+    rail.appendChild(b);
+  });
+  document.getElementById('progbar').style.width=(S.done.size/SECTIONS.length*100)+'%';
+}
+
+function go(i){
+  S.page=i;
+  const m=document.getElementById('main');
+  m.innerHTML=SECTIONS[i].render();
+  if(SECTIONS[i].init) SECTIONS[i].init();
+  if(i<4) S.done.add(i);
+  const nav=document.createElement('div');
+  nav.className='btnrow';
+  nav.style.marginTop='34px';
+  if(i>0){const p=document.createElement('button');p.className='btn ghost';p.textContent='← Back';p.onclick=()=>go(i-1);nav.appendChild(p);}
+  if(i<SECTIONS.length-1){const n=document.createElement('button');n.className='btn';n.textContent='Continue →';n.onclick=()=>go(i+1);nav.appendChild(n);}
+  m.appendChild(nav);
+  paint();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+go(0);
+</script>
